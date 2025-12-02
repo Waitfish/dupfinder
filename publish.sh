@@ -168,12 +168,34 @@ fi
 # 再次检查 Git 状态（以防有其他未提交的更改）
 if [ -d ".git" ]; then
     if [ -n "$(git status --porcelain)" ]; then
-        echo "⚠️  警告: 还有其他未提交的更改"
+        echo "📝 发现未提交的更改："
         git status --short
         echo ""
-        read -p "是否继续发布？(y/N) " -n 1 -r
+        read -p "是否自动提交这些更改？(Y/n) " -n 1 -r
         echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+            # 自动提交所有更改
+            echo "📝 自动提交更改..."
+            git add -A
+            
+            # 生成提交信息
+            COMMIT_MSG="feat: Add glob/regex filtering for v$CURRENT_VERSION
+
+- Add --pattern/-p flag for glob pattern filtering
+- Add --regex flag for regex pattern filtering
+- Update documentation with examples
+- Bump version to $CURRENT_VERSION"
+            
+            git commit -m "$COMMIT_MSG"
+            
+            read -p "是否推送到远程仓库？(Y/n) " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Nn]$ ]]; then
+                git push
+                echo "✅ 已推送到远程仓库"
+            fi
+        else
+            echo "❌ 已取消发布"
             exit 1
         fi
     fi
