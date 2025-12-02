@@ -64,11 +64,12 @@ jobs:
             mv ${{ matrix.artifact_name }} ${{ matrix.asset_name }}
           fi
       
-      - name: Create Release
+      - name: Upload Release Asset
         uses: softprops/action-gh-release@v2
         with:
           files: target/${{ matrix.target }}/release/${{ matrix.asset_name }}
           draft: false
           prerelease: false
-          generate_release_notes: true
+          # 只在第一个 job (Linux x86_64) 生成 release notes，避免重复
+          generate_release_notes: ${{ matrix.target == 'x86_64-unknown-linux-gnu' }}
 
