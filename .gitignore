@@ -1,6 +1,7 @@
 # Rust
 /target/
-Cargo.lock
+# Note: Cargo.lock should be committed for binary crates
+# Cargo.lock
 
 # IDE
 .idea/
