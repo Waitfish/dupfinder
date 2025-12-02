@@ -22,6 +22,7 @@ use walkdir::WalkDir;
 #[derive(Parser, Debug)]
 #[command(
     name = "dupfinder",
+    version,
     about = "快速查找重复文件 - 4 层验证",
     long_about = "使用多层验证策略快速准确地查找重复文件：\n\
                   1. 文件大小比较\n\
