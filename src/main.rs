@@ -6,6 +6,8 @@
 use chrono::Local;
 use clap::Parser;
 use colored::*;
+use globset::{Glob, GlobSet, GlobSetBuilder};
+use regex::Regex;
 use same_file::is_same_file;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -63,6 +65,25 @@ struct Args {
     /// 生成删除脚本
     #[arg(long, value_name = "FILE")]
     delete_script: Option<PathBuf>,
+
+    /// 文件名 glob 模式过滤（可多次使用）
+    /// 
+    /// 示例:
+    ///   -p "*.pdf"                    只检测 PDF 文件
+    ///   -p "*.jpg" -p "*.png"         检测图片文件
+    ///   -p "backup*"                  检测 backup 开头的文件
+    #[arg(short = 'p', long = "pattern", value_name = "GLOB")]
+    patterns: Vec<String>,
+
+    /// 文件名正则表达式过滤
+    /// 
+    /// 示例:
+    ///   --regex ".*\\.pdf$"                              PDF 文件
+    ///   --regex "photo_[0-9]+\\.jpg"                     photo_数字.jpg
+    ///   --regex ".*\\.(txt|pdf|docx?|xlsx?|pptx?|csv)$"  Office 文件
+    ///   --regex ".*\\.(txt|pdf|doc|docx|xls|xlsx|ppt|pptx|csv|xmind)$"  所有文档
+    #[arg(long = "regex", value_name = "REGEX")]
+    regex_pattern: Option<String>,
 }
 
 // ============================================================================
@@ -96,17 +117,58 @@ struct DupFinder {
     include_hardlinks: bool,
     relative_path: bool,
     base_path: PathBuf,
+    glob_set: Option<GlobSet>,
+    regex: Option<Regex>,
 }
 
 impl DupFinder {
-    fn new(verbose: bool, show_size: bool, include_hardlinks: bool, relative_path: bool, base_path: PathBuf) -> Self {
+    fn new(
+        verbose: bool,
+        show_size: bool,
+        include_hardlinks: bool,
+        relative_path: bool,
+        base_path: PathBuf,
+        glob_set: Option<GlobSet>,
+        regex: Option<Regex>,
+    ) -> Self {
         DupFinder {
             verbose,
             show_size,
             include_hardlinks,
             relative_path,
             base_path,
+            glob_set,
+            regex,
         }
+    }
+    
+    /// 检查文件是否应该被包含在扫描中
+    fn should_include_file(&self, path: &Path) -> bool {
+        // 如果没有指定任何过滤条件，包含所有文件
+        if self.glob_set.is_none() && self.regex.is_none() {
+            return true;
+        }
+        
+        let filename = match path.file_name().and_then(|n| n.to_str()) {
+            Some(name) => name,
+            None => return false,
+        };
+        
+        // 检查 glob 模式
+        if let Some(ref globset) = self.glob_set {
+            if globset.is_match(filename) {
+                return true;
+            }
+        }
+        
+        // 检查正则表达式
+        if let Some(ref regex) = self.regex {
+            if regex.is_match(filename) {
+                return true;
+            }
+        }
+        
+        false
     }
     
     /// 格式化路径显示（绝对路径或相对路径）
@@ -814,11 +876,18 @@ impl DupFinder {
 
         for entry in walker.filter_map(|e| e.ok()) {
             if entry.file_type().is_file() {
-                paths.push(entry.path().to_path_buf());
+                let path = entry.path();
+                // 应用文件名过滤
+                if self.should_include_file(path) {
+                    paths.push(path.to_path_buf());
+                }
             }
         }
 
         if paths.is_empty() {
+            if self.glob_set.is_some() || self.regex.is_some() {
+                println!("{}", "⚠️  未找到匹配的文件".yellow());
+            }
             return Vec::new();
         }
 
@@ -866,6 +935,45 @@ fn main() {
         "{}",
         "🔍 DupFinder - 重复文件查找工具".bright_cyan().bold()
     );
+    
+    // 构建 GlobSet
+    let glob_set = if !args.patterns.is_empty() {
+        let mut builder = GlobSetBuilder::new();
+        for pattern in &args.patterns {
+            match Glob::new(pattern) {
+                Ok(glob) => {
+                    builder.add(glob);
+                }
+                Err(e) => {
+                    eprintln!("{} {}: {}", "❌ 无效的 glob 模式".red(), pattern, e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        match builder.build() {
+            Ok(set) => Some(set),
+            Err(e) => {
+                eprintln!("{} {}", "❌ 构建 glob 集合失败:".red(), e);
+                std::process::exit(1);
+            }
+        }
+    } else {
+        None
+    };
+    
+    // 构建 Regex
+    let regex = if let Some(ref pattern) = args.regex_pattern {
+        match Regex::new(pattern) {
+            Ok(re) => Some(re),
+            Err(e) => {
+                eprintln!("{} {}: {}", "❌ 无效的正则表达式".red(), pattern, e);
+                std::process::exit(1);
+            }
+        }
+    } else {
+        None
+    };
+    
     // 获取绝对路径作为基准路径
     let base_path = args.path.canonicalize().unwrap_or_else(|_| args.path.clone());
     
@@ -873,6 +981,20 @@ fn main() {
         "{}",
         format!("📂 扫描路径: {}", args.path.display()).dimmed()
     );
+    
+    // 显示过滤条件
+    if !args.patterns.is_empty() {
+        println!(
+            "{}",
+            format!("🔍 Glob 模式: {}", args.patterns.join(", ")).dimmed()
+        );
+    }
+    if let Some(ref regex_pattern) = args.regex_pattern {
+        println!(
+            "{}",
+            format!("🔍 正则表达式: {}", regex_pattern).dimmed()
+        );
+    }
     
     // 处理递归选项（默认递归，除非指定 --no-recursive）
     let do_recursive = !args.no_recursive && args.recursive;
@@ -899,6 +1021,8 @@ fn main() {
         args.hardlinks,
         args.relative_path,
         base_path.clone(),
+        glob_set,
+        regex,
     );
     let duplicates = finder.find_duplicates(&args.path, do_recursive);
     finder.display_results(&duplicates);

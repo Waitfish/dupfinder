@@ -9,8 +9,9 @@
 - 🔒 **100% 准确**：最终字节比较确保绝对正确
 - 💻 **友好界面**：彩色输出，清晰的进度提示
 - 📊 **详细统计**：显示可节省的空间
+- 🔍 **智能过滤**：支持 glob 模式和正则表达式过滤文件
 - 📄 **JSON 输出**：导出结构化的重复文件报告
-- 🗑️ **删除脚本**：自动生成安全的删除脚本
+- 🗑️ **删除脚本**：自动生成安全的删除脚本（支持 Windows PowerShell）
 
 ## 📦 安装
 
@@ -60,6 +61,18 @@ dupfinder /path/to/directory --delete-script delete_dups.sh
 
 # 组合使用：扫描 + JSON + 删除脚本
 dupfinder -v -S /path/to/directory --json report.json --delete-script delete_dups.sh
+
+# 只检测 PDF 文件
+dupfinder /path/to/directory -p "*.pdf"
+
+# 检测多种文件类型
+dupfinder /path/to/directory -p "*.pdf" -p "*.jpg" -p "*.mp4"
+
+# 使用正则表达式匹配所有 Office 文档
+dupfinder /path/to/directory --regex ".*\\.(txt|pdf|docx?|xlsx?|pptx?|csv|xmind)$"
+
+# 查找特定命名模式的文件
+dupfinder /path/to/directory -p "backup*" -p "*_copy.*"
 ```
 
 ### 命令行参数
@@ -73,6 +86,8 @@ dupfinder -v -S /path/to/directory --json report.json --delete-script delete_dup
 | `--size` | `-S` | 显示文件大小和可节省空间 |
 | `--relative` | `-R` | 显示相对路径（默认显示绝对路径） |
 | `--hardlinks` | `-H` | 包含硬链接（默认跳过） |
+| `--pattern <GLOB>` | `-p` | Glob 模式过滤（可多次使用） |
+| `--regex <REGEX>` | - | 正则表达式过滤 |
 | `--json <FILE>` | - | 输出 JSON 格式报告到文件 |
 | `--delete-script <FILE>` | - | 生成删除重复文件的脚本 |
 | `--help` | `-h` | 显示帮助信息 |
@@ -103,6 +118,53 @@ DupFinder 使用 4 层渐进式验证策略，确保高效和准确：
 ```
 最终的完整字节比较
 100% 确保文件完全相同
+```
+
+## 🔍 文件过滤功能
+
+支持两种过滤方式：**Glob 模式**和**正则表达式**
+
+### Glob 模式（推荐）
+
+简单直观，支持通配符：
+
+```bash
+# 只检测 PDF 文件
+dupfinder ~/Documents -p "*.pdf"
+
+# 检测多种图片格式
+dupfinder ~/Pictures -p "*.jpg" -p "*.png" -p "*.gif"
+
+# 检测特定命名模式
+dupfinder ~/Backup -p "backup_*" -p "*_old.*"
+```
+
+### 正则表达式（高级）
+
+适合复杂匹配：
+
+```bash
+# 匹配所有 Office 文档（推荐）
+dupfinder ~/Documents --regex ".*\\.(txt|pdf|docx?|xlsx?|pptx?|csv|xmind)$"
+
+# 完整的 Office 文档匹配（包括 doc、xls、ppt）
+dupfinder ~/Documents --regex ".*\\.(txt|pdf|doc|docx|xls|xlsx|ppt|pptx|csv|xmind)$"
+
+# 匹配日期格式的文件
+dupfinder ~/Logs --regex "log_2025[0-9]{4}\\.txt$"
+
+# 匹配编号的照片
+dupfinder ~/Photos --regex "photo_[0-9]{4}\\.(jpg|png)$"
+```
+
+### 组合使用
+
+```bash
+# 只检测 PDF 中的重复文件，生成报告
+dupfinder ~/Documents -p "*.pdf" --json pdf_report.json -S
+
+# 检测所有文档，生成删除脚本
+dupfinder ~/Work --regex ".*\\.(pdf|docx?|xlsx?)$" --delete-script clean_docs.sh
 ```
 
 ## 📊 使用示例
