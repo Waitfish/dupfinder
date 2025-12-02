@@ -525,11 +525,9 @@ impl DupFinder {
     // 生成删除脚本
     // ========================================================================
     fn generate_delete_script(&self, groups: &[Vec<FileInfo>], output_path: &Path) -> io::Result<()> {
-        // 检测操作系统，决定生成哪种脚本
-        #[cfg(target_os = "windows")]
-        let is_windows = true;
-        #[cfg(not(target_os = "windows"))]
-        let is_windows = false;
+        // 运行时检测操作系统，决定生成哪种脚本
+        // 使用 std::env::consts::OS 而不是编译时 cfg
+        let is_windows = std::env::consts::OS == "windows";
 
         let script = if is_windows {
             self.generate_powershell_script(groups, output_path)?
@@ -555,7 +553,16 @@ impl DupFinder {
             "✅ 删除脚本已生成:".green(),
             output_path.display()
         );
-        println!("{}", "   请仔细检查后执行！".yellow());
+        
+        if is_windows {
+            println!("{}", "   请仔细检查后执行！".yellow());
+            println!("{}", "   执行方式：".cyan());
+            println!("{}", "     PowerShell -ExecutionPolicy Bypass -File <脚本文件>".cyan());
+            println!("{}", "     或右键脚本 -> 使用 PowerShell 运行".cyan());
+        } else {
+            println!("{}", "   请仔细检查后执行！".yellow());
+            println!("{}", "   执行方式：bash <脚本文件>".cyan());
+        }
 
         Ok(())
     }
