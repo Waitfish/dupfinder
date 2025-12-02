@@ -525,6 +525,45 @@ impl DupFinder {
     // 生成删除脚本
     // ========================================================================
     fn generate_delete_script(&self, groups: &[Vec<FileInfo>], output_path: &Path) -> io::Result<()> {
+        // 检测操作系统，决定生成哪种脚本
+        #[cfg(target_os = "windows")]
+        let is_windows = true;
+        #[cfg(not(target_os = "windows"))]
+        let is_windows = false;
+
+        let script = if is_windows {
+            self.generate_powershell_script(groups, output_path)?
+        } else {
+            self.generate_bash_script(groups, output_path)?
+        };
+
+        // 写入文件
+        let mut file = File::create(output_path)?;
+        file.write_all(script.as_bytes())?;
+
+        // 设置执行权限（Unix 系统）
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = fs::metadata(output_path)?.permissions();
+            perms.set_mode(0o755);
+            fs::set_permissions(output_path, perms)?;
+        }
+
+        println!(
+            "\n{} {}",
+            "✅ 删除脚本已生成:".green(),
+            output_path.display()
+        );
+        println!("{}", "   请仔细检查后执行！".yellow());
+
+        Ok(())
+    }
+
+    // ========================================================================
+    // 生成 Bash 脚本（Linux/macOS）
+    // ========================================================================
+    fn generate_bash_script(&self, groups: &[Vec<FileInfo>], output_path: &Path) -> io::Result<String> {
         let mut script = String::new();
 
         // 脚本头部
@@ -630,27 +669,127 @@ impl DupFinder {
         script.push_str("echo \"💾 节省空间: $(numfmt --to=iec-i --suffix=B $deleted_size 2>/dev/null || echo \\\"$deleted_size bytes\\\")\"\n");
         script.push_str("echo \"==============================================================================\"\n");
 
-        // 写入文件
-        let mut file = File::create(output_path)?;
-        file.write_all(script.as_bytes())?;
+        Ok(script)
+    }
 
-        // 设置执行权限（Unix 系统）
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let mut perms = fs::metadata(output_path)?.permissions();
-            perms.set_mode(0o755);
-            fs::set_permissions(output_path, perms)?;
+    // ========================================================================
+    // 生成 PowerShell 脚本（Windows）
+    // ========================================================================
+    fn generate_powershell_script(&self, groups: &[Vec<FileInfo>], output_path: &Path) -> io::Result<String> {
+        let mut script = String::new();
+
+        let deletable: usize = groups.iter().map(|g| g.len() - 1).sum();
+        let space_savings: u64 = groups
+            .iter()
+            .map(|g| g[0].size * (g.len() as u64 - 1))
+            .sum();
+
+        // 脚本头部
+        script.push_str("# ============================================================================\n");
+        script.push_str("# DupFinder 自动生成的删除脚本 (PowerShell)\n");
+        script.push_str(&format!("# 生成时间: {}\n", Local::now().format("%Y-%m-%d %H:%M:%S")));
+        script.push_str(&format!("# 扫描路径: {}\n", self.base_path.display()));
+        script.push_str(&format!("# 重复组数: {}\n", groups.len()));
+        script.push_str("# ============================================================================\n");
+        script.push_str("#\n");
+        script.push_str("# ⚠️  警告：此脚本将删除重复文件！\n");
+        script.push_str("#    每组重复文件会保留第一个，删除其他的。\n");
+        script.push_str("#    请仔细检查后再执行！\n");
+        script.push_str("#\n");
+        script.push_str("# 使用方法:\n");
+        script.push_str("#   1. 仔细检查下面的删除命令\n");
+        script.push_str("#   2. 如果需要保留其他文件，请注释掉对应的删除行\n");
+        script.push_str(&format!("#   3. 执行脚本: PowerShell -ExecutionPolicy Bypass -File {}\n", output_path.file_name().unwrap().to_string_lossy()));
+        script.push_str("#   4. 或右键 -> 使用 PowerShell 运行\n");
+        script.push_str("# ============================================================================\n\n");
+
+        // 安全检查
+        script.push_str("# 设置错误处理\n");
+        script.push_str("$ErrorActionPreference = \"Stop\"\n\n");
+
+        // 交互式确认
+        script.push_str("# 确认提示\n");
+        script.push_str("Write-Host \"⚠️  警告: 即将删除重复文件！\" -ForegroundColor Yellow\n");
+        script.push_str(&format!("Write-Host \"扫描路径: {}\"\n", self.base_path.display()));
+        script.push_str(&format!("Write-Host \"重复组数: {}\"\n", groups.len()));
+        script.push_str(&format!("Write-Host \"将删除文件数: {}\"\n", deletable));
+        script.push_str(&format!("Write-Host \"可节省空间: {}\"\n", format_size(space_savings)));
+        script.push_str("Write-Host \"\"\n");
+        script.push_str("$confirm = Read-Host \"确认要继续吗? (yes/no)\"\n");
+        script.push_str("if ($confirm -ne \"yes\") {\n");
+        script.push_str("    Write-Host \"❌ 已取消删除操作\" -ForegroundColor Red\n");
+        script.push_str("    exit 0\n");
+        script.push_str("}\n\n");
+
+        // 统计变量
+        script.push_str("# 统计变量\n");
+        script.push_str("$deletedCount = 0\n");
+        script.push_str("$deletedSize = 0\n");
+        script.push_str("$failedCount = 0\n\n");
+
+        // 为每组生成删除命令
+        for (i, group) in groups.iter().enumerate() {
+            script.push_str("\n# ============================================================================\n");
+            script.push_str(&format!("# 组 {}: {} 个重复文件 (大小: {} bytes)\n", 
+                i + 1, group.len(), group[0].size));
+            script.push_str("# ============================================================================\n");
+            
+            // 显示保留的文件
+            let keep_path = if let Ok(abs) = group[0].path.canonicalize() {
+                abs.display().to_string()
+            } else {
+                group[0].path.display().to_string()
+            };
+            script.push_str(&format!("# 保留: {}\n", keep_path));
+            
+            // 删除其他文件
+            for (j, file) in group.iter().skip(1).enumerate() {
+                let file_path = if let Ok(abs) = file.path.canonicalize() {
+                    abs.display().to_string()
+                } else {
+                    file.path.display().to_string()
+                };
+                
+                script.push_str(&format!("\n# 删除文件 {}/{}\n", j + 1, group.len() - 1));
+                script.push_str(&format!("if (Test-Path \"{}\") {{\n", file_path));
+                script.push_str(&format!("    Write-Host \"删除: {}\"\n", file_path));
+                script.push_str("    try {\n");
+                script.push_str(&format!("        Remove-Item \"{}\" -Force\n", file_path));
+                script.push_str("        $deletedCount++\n");
+                script.push_str(&format!("        $deletedSize += {}\n", file.size));
+                script.push_str("    } catch {\n");
+                script.push_str(&format!("        Write-Host \"❌ 删除失败: {}\" -ForegroundColor Red\n", file_path));
+                script.push_str("        $failedCount++\n");
+                script.push_str("    }\n");
+                script.push_str("} else {\n");
+                script.push_str(&format!("    Write-Host \"⚠️  文件不存在: {}\" -ForegroundColor Yellow\n", file_path));
+                script.push_str("}\n");
+            }
         }
 
-        println!(
-            "\n{} {}",
-            "✅ 删除脚本已生成:".green(),
-            output_path.display()
-        );
-        println!("{}", "   请仔细检查后执行！".yellow());
+        // 脚本结尾 - 显示统计信息
+        script.push_str("\n# ============================================================================\n");
+        script.push_str("# 删除完成，显示统计信息\n");
+        script.push_str("# ============================================================================\n");
+        script.push_str("Write-Host \"\"\n");
+        script.push_str("Write-Host \"==============================================================================\" -ForegroundColor Cyan\n");
+        script.push_str("Write-Host \"📊 删除统计:\" -ForegroundColor Cyan\n");
+        script.push_str("Write-Host \"==============================================================================\" -ForegroundColor Cyan\n");
+        script.push_str("Write-Host \"✅ 成功删除: $deletedCount 个文件\" -ForegroundColor Green\n");
+        script.push_str("Write-Host \"❌ 失败数量: $failedCount 个文件\" -ForegroundColor Red\n");
+        script.push_str("$sizeInMB = [math]::Round($deletedSize / 1MB, 2)\n");
+        script.push_str("if ($sizeInMB -gt 0) {\n");
+        script.push_str("    Write-Host \"💾 节省空间: $sizeInMB MB ($deletedSize bytes)\" -ForegroundColor Green\n");
+        script.push_str("} else {\n");
+        script.push_str("    Write-Host \"💾 节省空间: $deletedSize bytes\" -ForegroundColor Green\n");
+        script.push_str("}\n");
+        script.push_str("Write-Host \"==============================================================================\" -ForegroundColor Cyan\n");
+        script.push_str("\n# 暂停，等待用户按键\n");
+        script.push_str("Write-Host \"\"\n");
+        script.push_str("Write-Host \"按任意键退出...\" -ForegroundColor Gray\n");
+        script.push_str("$null = $Host.UI.RawUI.ReadKey(\"NoEcho,IncludeKeyDown\")\n");
 
-        Ok(())
+        Ok(script)
     }
 
     // ========================================================================

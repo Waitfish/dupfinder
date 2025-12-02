@@ -238,8 +238,12 @@ $ dupfinder /path/to/directory --delete-script delete_dups.sh
 # 检查脚本内容
 $ cat delete_dups.sh
 
-# 执行删除脚本（需要手动确认）
+# Linux/macOS: 执行 Bash 脚本
 $ bash delete_dups.sh
+
+# Windows: 执行 PowerShell 脚本
+PS> PowerShell -ExecutionPolicy Bypass -File delete_dups.ps1
+
 ⚠️  警告: 即将删除重复文件！
 扫描路径: /path/to/directory
 重复组数: 2
@@ -254,7 +258,9 @@ $ bash delete_dups.sh
 ```
 
 **删除脚本特点：**
-- ✅ 自动生成可执行的 bash 脚本
+- ✅ 自动识别操作系统，生成对应脚本（Bash 或 PowerShell）
+- ✅ Linux/macOS: 生成 .sh 脚本
+- ✅ Windows: 生成 .ps1 PowerShell 脚本
 - ✅ 每组重复文件保留第一个，删除其他的
 - ✅ 需要手动确认（输入 `yes`）才会执行删除
 - ✅ 详细的注释，方便手动编辑
