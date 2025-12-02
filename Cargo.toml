@@ -1,0 +1,36 @@
+[package]
+name = "dupfinder"
+version = "0.2.0"
+edition = "2021"
+authors = ["waitfish <daiwj2024@outlook.com>"]
+description = "A fast duplicate file finder with JSON export and safe deletion scripts"
+license = "MIT"
+repository = "https://github.com/Waitfish/dupfinder"
+homepage = "https://github.com/Waitfish/dupfinder"
+documentation = "https://github.com/Waitfish/dupfinder"
+readme = "README.md"
+keywords = ["duplicate", "file-finder", "fdupes", "deduplication", "cli"]
+categories = ["command-line-utilities", "filesystem"]
+
+[dependencies]
+# 命令行参数解析
+clap = { version = "4.4", features = ["derive"] }
+# MD5 哈希计算
+md5 = "0.7"
+# 遍历目录
+walkdir = "2.4"
+# 彩色输出
+colored = "2.1"
+# 检测文件是否相同（处理硬链接/符号链接）
+same-file = "1.0"
+# JSON 序列化
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# 时间处理
+chrono = "0.4"
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+codegen-units = 1
