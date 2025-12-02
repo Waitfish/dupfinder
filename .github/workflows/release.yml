@@ -13,6 +13,7 @@ jobs:
     name: Build and Release
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false  # 一个平台失败不影响其他平台
       matrix:
         include:
           - os: ubuntu-latest
