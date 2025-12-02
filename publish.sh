@@ -214,6 +214,19 @@ case $choice in
             echo "ℹ️  未找到测试，跳过测试步骤"
         fi
         
+        # 检查并提交 Cargo.lock 更新
+        if [ -d ".git" ]; then
+            if git diff --quiet Cargo.lock 2>/dev/null; then
+                echo "ℹ️  Cargo.lock 无变化"
+            else
+                echo "📝 提交 Cargo.lock 更新..."
+                git add Cargo.lock
+                git commit -m "chore: Update Cargo.lock for v$CURRENT_VERSION"
+                git push
+                echo "✅ Cargo.lock 已更新并推送"
+            fi
+        fi
+        
         # 发布
         echo "📤 发布中..."
         cargo publish --registry crates-io
@@ -265,6 +278,19 @@ case $choice in
         if cargo test --dry-run 2>&1 | grep -q "test"; then
             echo "🧪 运行测试..."
             cargo test
+        fi
+        
+        # 1.5 检查并提交 Cargo.lock 更新
+        if [ -d ".git" ]; then
+            if git diff --quiet Cargo.lock 2>/dev/null; then
+                echo "ℹ️  Cargo.lock 无变化"
+            else
+                echo "📝 提交 Cargo.lock 更新..."
+                git add Cargo.lock
+                git commit -m "chore: Update Cargo.lock for v$CURRENT_VERSION"
+                git push
+                echo "✅ Cargo.lock 已更新并推送"
+            fi
         fi
         
         # 2. 发布到 crates.io
