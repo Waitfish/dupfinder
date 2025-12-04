@@ -1,6 +1,6 @@
 [package]
 name = "dupfinder"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 authors = ["waitfish <daiwj2024@outlook.com>"]
 description = "A fast duplicate file finder with glob/regex filtering, JSON export, and cross-platform delete scripts"
